@@ -12,12 +12,17 @@ JWT_SECRET = os.getenv("JWT_SECRET")
 auth_blueprint = Blueprint("auth", __name__)
 CORS(auth_blueprint, origins=["http://127.0.0.1:3000"], supports_credentials=True)
 
+
 @auth_blueprint.route("/login", methods=["POST"])
 def login():
     data = request.json
     email = data.get("email")
     password = data.get("password")
     user = User.find_by_email(email)
+
+    # Can't find user in db
+    if user == None:
+        return jsonify({"message": "User not found"}), 404
 
     if email == "admin@example.com" and password == "admin":
         token = create_jwt_token(user)
@@ -29,13 +34,30 @@ def login():
 
     if user and verify_password(password, user["password"]):
         if not user["isVerify"]:
-            token = create_email_verify_token(user)
-            User.set_verify_token(email, token)
+            if User.check_verify_token(
+                email
+            ):  # Check if email token of user is expired or not
+                token = create_email_verify_token(user)
+                User.set_verify_token(email, token)
+            else:
+                return (
+                    jsonify(
+                        {
+                            "message": "Not verified. Please check your mail for verification link."
+                        }
+                    ),
+                    403,
+                )
             try:
                 send_verification_email(email, token)
             except Exception as e:
                 print(f"Error sending verification email: {e}")
-            return jsonify({"message": "Not verified. A new verification email has been sent."}), 403
+            return (
+                jsonify(
+                    {"message": "Not verified. A new verification email has been sent."}
+                ),
+                403,
+            )
         User.del_verify_token(user["email"])
         token = create_jwt_token(user)
         response = jsonify({"message": "Login successful"})
@@ -65,18 +87,26 @@ def signup():
     hashed_password = hash_password(password)
 
     # Insert the new user
-    new_user = {"email": email, "password": hashed_password, "role": "user", "isVerify" : False}
+    new_user = {
+        "email": email,
+        "password": hashed_password,
+        "fullName": "",
+        "avatar": "",
+        "role": "user",
+        "participatedCourses": [],
+        "isVerify": False,
+    }
     User.insert_user(new_user)
-    
+
     # Create, save email verification token and send verification email
     token = create_email_verify_token(new_user)
     User.set_verify_token(new_user["email"], token)
-    
+
     try:
         send_verification_email(email, token)
     except Exception as e:
         print(f"Error sending verification email: {e}")
-    
+
     response = jsonify({"message": "Signup successful, please verify your email"})
     return response, 201
 
@@ -102,13 +132,14 @@ def get_user():
                 "id": user_data["user_id"],
                 "email": user_data["email"],
                 "role": user_data["role"],
-                "isVerify": user_data["isVerify"]
+                "isVerify": user_data["isVerify"],
             }
         )
     except jwt.ExpiredSignatureError:
         return jsonify({"message": "Token expired"}), 401
     except jwt.InvalidTokenError:
         return jsonify({"message": "Invalid token"}), 401
+
 
 @auth_blueprint.route("/verify-email", methods=["GET"])
 def verify_email():
