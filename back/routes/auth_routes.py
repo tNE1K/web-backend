@@ -10,7 +10,7 @@ import os
 JWT_SECRET = os.getenv("JWT_SECRET")
 
 auth_blueprint = Blueprint("auth", __name__)
-CORS(auth_blueprint, origins=["http://localhost:3000"], supports_credentials=True)
+CORS(auth_blueprint, origins=["http://127.0.0.1:3000"], supports_credentials=True)
 
 @auth_blueprint.route("/login", methods=["POST"])
 def login():
